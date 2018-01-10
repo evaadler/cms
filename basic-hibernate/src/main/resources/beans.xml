@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:cache="http://www.springframework.org/schema/cache"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/tool http://www.springframework.org/schema/tool/spring-tool.xsd
+       http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd
+       http://www.springframework.org/schema/cache http://www.springframework.org/schema/cache/spring-cache.xsd">
+
+    <context:annotation-config />
+
+    <context:component-scan base-package="org.fifi"/>
+
+    <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource" destroy-method="close">
+        <property name="driverClassName" value="jdbc:mysql://" />
+        <property name="url" value="${jdbc.url}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+
+        <!--配置连接池初始值-->
+        <property name="initialSize" value="1"/>
+
+        <!--连接池的最大值-->
+        <property name="maxActive" value="90"/>
+
+        <!--最大空闲时，当经过一个高峰之后，连接池可以将一些不用的链接释放，一直减少到maxIdel为止-->
+        <property name="maxIdle" value="2" />
+        <!--最小空闲是，当链接少于minIdle时会自动申请一些链接-->
+        <property name="minIdle" value="1" />
+    </bean>
+
+    <!--hibernate4整合没有提供专门的针对Annotation的类，直接在LocalSessionFactoryBean中集成-->
+    <bean id="sessionFactory" class="org.springframework.orm.hibernate3.LocalSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <property name="packageToScan">
+            <value>org.fifi.basic.model</value>
+        </property>
+        <property name="hibernateProperties">
+            <props>
+                <prop key="hibernate.dialect">org.hibernate.dialect.MySQL5Dialect</prop>
+                <prop key="hibernate.show_sql">true</prop>
+                <prop key="hibernate.hbm2ddl.auto">update</prop>
+                <prop key="hibernate.format_sql">false</prop>
+            </props>
+        </property>
+    </bean>
+
+    <!--事务管理器-->
+    <bean id="txManager" class="org.springframework.orm.hibernate4.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory"/>
+    </bean>
+
+    <!--配置AOP，Spring是通过AOP来进行事务管理的-->
+    <aop:config>
+        <!--设置pointCut表示哪些方法要加入事务处理-->
+        <!--以下事务是声明在Dao中，但是通常都会在service来处理多个业务对象逻辑的关系，注入删除，更新等，就会导致数据不完整，所以事务不应该在Dao层处理，
+        而应该在service-->
+        <aop:pointcut id="allMethods" expression="execution(* org.fifi.dao.*.*(..))" />
+        <!--通过advisor来确定具体要加入事务控制的方法-->
+        <aop:advisor advice-ref="txAdvice" pointcut-ref="allMethods" />
+    </aop:config>
+
+    <!--配置哪些方法要加入事务控制-->
+    <tx:advice id="txAdvice" transaction-manager="txManager">
+       <tx:attributes>
+           <!--所有方法都加入事务管理，为了提高效率，可以把一些查询类的方法设置为只读的事务-->
+           <tx:method name="*" propagation="REQUIRED" read-only="true"/>
+           <tx:method name="add*" propagation="REQUIRED"/>
+           <tx:method name="del*" propagation="REQUIRED"/>
+           <tx:method name="update*" propagation="REQUIRED"/>
+           <tx:method name="save*" propagation="REQUIRED"/>
+       </tx:attributes>
+    </tx:advice>
+
+</beans>
